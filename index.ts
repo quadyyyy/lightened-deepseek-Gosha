@@ -11,8 +11,9 @@ import { autoRetry } from '@grammyjs/auto-retry';
 import crypto from 'crypto';
 import OpenAI from 'openai';
 
-const openaiApiClient = new OpenAI({
-    apiKey: config.openaiApiKey,
+const deepseekApiClient = new OpenAI({
+    apiKey: config.deepseekApiKey,
+    baseURL: 'https://api.deepseek.com',
 });
 
 const bot = new Bot<FileFlavor<Context>, FileApiFlavor<Api>>(config.botToken);
@@ -84,8 +85,9 @@ const getCaption = async (imgBuffer: Buffer): Promise<string | null> => {
         try {
             output = await pRetry(
                 async () => {
-                    return await openaiApiClient.chat.completions.create({
-                        model: 'gpt-5.4-nano',
+                    return await deepseekApiClient.chat.completions.create({
+                        model: config.deepseekModel,
+                        reasoning_effort: 'none',
                         temperature: 0.1,
                         messages: [
                             {
@@ -278,37 +280,37 @@ const gpt = async (params: {
 
     const STRATEGIES: Strategy[] = [
         {
-            model: 'gpt-5.4-mini',
+            model: config.deepseekModel,
             useRofl: false,
             useCaption: true,
             tries: 5,
         },
         {
-            model: 'gpt-5.4-mini',
+            model: config.deepseekModel,
             useRofl: true,
             useCaption: false,
             tries: 5,
         },
         {
-            model: 'gpt-5.4-mini',
+            model: config.deepseekModel,
             useRofl: false,
             useCaption: true,
             tries: 5,
         },
         {
-            model: 'gpt-3.5-turbo',
+            model: config.deepseekModel,
             useRofl: false,
             useCaption: true,
             tries: 5,
         },
         {
-            model: 'gpt-3.5-turbo',
+            model: config.deepseekModel,
             useRofl: false,
             useCaption: true,
             tries: 5,
         },
         {
-            model: 'gpt-3.5-turbo',
+            model: config.deepseekModel,
             useRofl: false,
             useCaption: true,
             tries: 5,
@@ -387,8 +389,9 @@ const gpt = async (params: {
             });
         }
 
-        const gptPromise = openaiApiClient.chat.completions.create({
+        const gptPromise = deepseekApiClient.chat.completions.create({
             model: strategy.model,
+            reasoning_effort: 'none',
             temperature: 0.7,
             messages,
         })

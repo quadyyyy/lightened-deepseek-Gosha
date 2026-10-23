@@ -1,7 +1,8 @@
 /* eslint-disable @stylistic/max-len */
 
 const config: Config = {
-    openaiApiKey: '',
+    deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
+    deepseekModel: 'deepseek-flash',
     botToken: '',
     botUsername: '', // goshamemebot
     banList: [], // id[]

@@ -3,10 +3,10 @@ export {};
 declare global {
     type Lang = 'RU' | 'UA' | 'EN';
 
-    type GptModel = 'gpt-3.5-turbo' | 'gpt-5.4-mini';
+    type DeepSeekModel = 'deepseek-flash';
 
     type Strategy = {
-        model: GptModel;
+        model: DeepSeekModel;
         useRofl: boolean;
         useCaption: boolean;
         tries: number;
@@ -18,7 +18,8 @@ declare global {
     };
 
     type Config = {
-        openaiApiKey: string;
+        deepseekApiKey: string;
+        deepseekModel: DeepSeekModel;
         proxyUrl?: string;
         botToken: string;
         botUsername: string;

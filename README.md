@@ -1,6 +1,6 @@
 # Gosha
 
-Gosha is a Telegram bot that generates crude meme-style captions for uploaded images. It uses OpenAI models, Telegram Bot API, and Puppeteer/Sharp-based image processing to react to screenshots and photos with short, chaotic, internet-style responses.
+Gosha is a Telegram bot that generates crude meme-style captions for uploaded images. It uses DeepSeek V4.1 Flash via the OpenAI-compatible SDK, Telegram Bot API, and Puppeteer/Sharp-based image processing to react to screenshots and photos with short, chaotic, internet-style responses.
 
 ## Features
 
@@ -15,7 +15,7 @@ Gosha is a Telegram bot that generates crude meme-style captions for uploaded im
 
 - Node.js 18+
 - pnpm or npm
-- OpenAI API key
+- DeepSeek API key
 - Telegram bot token
 
 ## Installation
@@ -27,10 +27,17 @@ pnpm install
 Then configure the required values in `config.ts`:
 
 ```ts
-openaiApiKey: 'your-openai-api-key',
+deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
+deepseekModel: 'deepseek-flash',
 botToken: 'your-telegram-bot-token',
 botUsername: 'your-bot-username',
 ```
+
+Set `DEEPSEEK_API_KEY` in the environment before starting the bot (or fill in `deepseekApiKey` locally). An OpenAI API key cannot be used with DeepSeek.
+
+Both image descriptions and caption generation use `deepseek-flash` at `https://api.deepseek.com`. Thinking is disabled with `reasoning_effort: 'none'` for short responses and temperature control; description and caption temperatures remain 0.1 and 0.7 respectively. Existing cached descriptions are reused.
+
+Official documentation: [models](https://api-docs.deepseek.com/quick_start/pricing/), [Chat Completions parameters](https://api-docs.deepseek.com/api/create-chat-completion/), and [thinking mode](https://api-docs.deepseek.com/guides/thinking_mode/).
 
 The project also contains prompt templates and caption-generation rules in `config.ts`, which you can adjust if needed.
 
