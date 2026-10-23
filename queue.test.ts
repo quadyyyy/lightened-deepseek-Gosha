@@ -74,3 +74,65 @@ test('close drains accepted jobs and rejects new jobs', async () => {
     assert.deepEqual(events, ['finished', 'closed']);
     await queue.close();
 });
+
+test('shutdown accepts the remaining grammY update batch before closing the queue', async () => {
+    const { Bot } = await import('grammy');
+    const bot = new Bot('123:test', {
+        botInfo: {
+            id: 123,
+            is_bot: true,
+            first_name: 'Test',
+            username: 'test_bot',
+            can_join_groups: true,
+            can_read_all_group_messages: false,
+            supports_inline_queries: false,
+            can_connect_to_business: false,
+            has_main_web_app: false,
+        },
+    });
+    let fetched = false;
+    bot.api.deleteWebhook = async () => true;
+    bot.api.getUpdates = async () => {
+        const updates = fetched ?
+            [] :
+            [1, 2].map(id => ({
+                update_id: id,
+                message: {
+                    message_id: id,
+                    date: 0,
+                    from: { id: 1, is_bot: false, first_name: 'Test' },
+                    chat: { id: 1, type: 'private' as const, first_name: 'Test' },
+                    text: 'test',
+                },
+            }));
+        fetched = true;
+        return updates;
+    };
+    const queue = new TaskQueue();
+    const completed: number[] = [];
+    let entered!: () => void;
+    const started = new Promise<void>((resolve) => {
+        entered = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+        release = resolve;
+    });
+    const jobs: Promise<void>[] = [];
+    bot.on('message', async (ctx) => {
+        entered();
+        await gate;
+        jobs.push(queue.enqueue(async () => {
+            completed.push(ctx.update.update_id);
+        }));
+    });
+    const polling = bot.start();
+    await started;
+    await bot.stop();
+    assert.deepEqual(completed, []);
+    release();
+    await polling;
+    await queue.close();
+    await Promise.all(jobs);
+    assert.deepEqual(completed, [1, 2]);
+});

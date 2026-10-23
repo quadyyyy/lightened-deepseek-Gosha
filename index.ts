@@ -141,21 +141,22 @@ const getCaption = async (imgBuffer: Buffer): Promise<string | null> => {
         return c.gpt;
     }
 
-    const p = new Promise<string | null>((resolve) => {
-        (async () => {
+    c.promise = (async () => {
+        try {
             const caption = await callGpt(imgBuffer);
             if (caption) {
                 c.gpt = caption;
-                saveCaption(hash);
+                await saveCaption(hash).catch((error) => {
+                    console.error('Caption cache write failed:', error);
+                });
             }
+            return caption;
+        } finally {
+            c.promise = null;
+        }
+    })();
 
-            resolve(caption);
-        })();
-    });
-
-    c.promise = p;
-
-    return p;
+    return c.promise;
 };
 
 type CooldownType = 'RANDOM' | 'USER' | 'PRIVATE' | 'TIRED' | 'ANON';
@@ -390,7 +391,7 @@ const gpt = async (params: {
             });
         }
 
-        const gptPromise = deepseekApiClient.chat.completions.create({
+        const requestGeneration = () => deepseekApiClient.chat.completions.create({
             model: strategy.model,
             reasoning_effort: 'none',
             temperature: 0.7,
@@ -405,7 +406,7 @@ const gpt = async (params: {
             variants = await pRetry(
                 async () => {
                     for (let i = 1; i <= 3; i++) {
-                        const response = await gptPromise;
+                        const response = await requestGeneration();
 
                         const result = response.split(/\n\s*===\s*\n/).map((content) => {
                             content = content.trim().replaceAll(/^=+|=+$/g, '').trim();
@@ -527,43 +528,47 @@ const getBrowserPage = async () => {
 
 const draw = async (imgBuffer: Buffer, text: string): Promise<Buffer> => {
     const page = await getBrowserPage();
-    const base64 = imgBuffer.toString('base64');
+    try {
+        const base64 = imgBuffer.toString('base64');
 
-    const img = sharp(imgBuffer);
-    const meta = await img.metadata();
-    let width = meta.width ?? 0;
-    let height = meta.height ?? 0;
+        const img = sharp(imgBuffer);
+        const meta = await img.metadata();
+        let width = meta.width ?? 0;
+        let height = meta.height ?? 0;
 
-    const scale1 = Math.min(960 / width, 960 / height);
-    width *= scale1;
-    height *= scale1;
-    width = Math.max(540, width);
-    height = Math.max(540, height);
+        const scale1 = Math.min(960 / width, 960 / height);
+        width *= scale1;
+        height *= scale1;
+        width = Math.max(540, width);
+        height = Math.max(540, height);
 
-    const scale2 = Math.min(960 / width, 960 / height);
-    width *= scale2;
-    height *= scale2;
+        const scale2 = Math.min(960 / width, 960 / height);
+        width *= scale2;
+        height *= scale2;
 
-    width = Math.floor(width);
-    height = Math.floor(height);
+        width = Math.floor(width);
+        height = Math.floor(height);
 
-    let newHtml = await htmlPromise;
-    newHtml = newHtml.replaceAll('{{width}}', width + '');
-    newHtml = newHtml.replaceAll('{{height}}', height + '');
-    newHtml = newHtml.replaceAll('{{src}}', 'data:image/jpeg;base64,' + base64);
-    newHtml = newHtml.replaceAll('{{text}}', text);
-    await page.setContent(newHtml);
+        let newHtml = await htmlPromise;
+        newHtml = newHtml.replaceAll('{{width}}', width + '');
+        newHtml = newHtml.replaceAll('{{height}}', height + '');
+        newHtml = newHtml.replaceAll('{{src}}', 'data:image/jpeg;base64,' + base64);
+        newHtml = newHtml.replaceAll('{{text}}', text);
+        await page.setContent(newHtml);
 
-    const element = await page.$('.container');
-    await new Promise(r => setTimeout(r, 0));
+        const element = await page.$('.container');
+        await new Promise(r => setTimeout(r, 0));
 
-    const result = await element!.screenshot({
-        omitBackground: true,
-    }) as Buffer;
+        const result = await element!.screenshot({
+            omitBackground: true,
+        }) as Buffer;
 
-    await page.close();
-
-    return result;
+        return result;
+    } finally {
+        await page.close().catch((error) => {
+            console.error('Failed to close render page:', error);
+        });
+    }
 };
 
 const img2img = async (params: {
@@ -965,12 +970,25 @@ bot.catch((error) => {
     console.error(error);
 });
 
-bot.start();
+const polling = bot.start();
+let exiting = false;
 
 const exit = async () => {
-    await bot.stop();
+    if (exiting) {
+        return;
+    }
+    exiting = true;
+    await bot.stop().catch((error) => {
+        console.error('Failed to stop polling:', error);
+    });
+    // stop() only cancels polling; start() waits for the current update batch.
+    await polling.catch((error) => {
+        console.error('Polling failed:', error);
+    });
     await generationQueue.close();
-    await browser?.close();
+    await browser?.close().catch((error) => {
+        console.error('Failed to close browser:', error);
+    });
     process.exit();
 };
 
