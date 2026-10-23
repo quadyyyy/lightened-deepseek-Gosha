@@ -2,6 +2,8 @@
 
 Gosha is a Telegram bot that generates crude meme-style captions for uploaded images. It uses DeepSeek V4.1 Flash via the OpenAI-compatible SDK, Telegram Bot API, and Puppeteer/Sharp-based image processing to react to screenshots and photos with short, chaotic, internet-style responses.
 
+This DeepSeek edition is adapted for small VPS instances with limited CPU and RAM, using sequential meme processing to limit peak resource usage.
+
 ## Features
 
 - accepts image messages in Telegram
