@@ -9,6 +9,7 @@ Gosha is a Telegram bot that generates crude meme-style captions for uploaded im
 - describes the image to help produce more context-aware captions
 - caches generated captions by image hash in the `captions/` directory
 - supports multiple generation strategies and fallback variants
+- queues meme requests in FIFO order and processes one job at a time across all chats
 - includes cooldown and ban-list protection for chat abuse control
 
 ## Requirements
@@ -59,4 +60,6 @@ pnpm start
 
 - `index.ts` contains the Telegram bot logic and caption generation pipeline.
 - `captions/` stores cached caption data for repeated images.
+- `queue.ts` serializes download, generation, rendering, and delivery without blocking incoming Telegram updates. Failed jobs do not stop the queue.
+- The queue is held in memory: graceful shutdown drains accepted jobs, but a crash or forced termination loses pending jobs. Run a single bot process to keep one global queue.
 - `ecosystem.config.cjs` is included for PM2-based process management

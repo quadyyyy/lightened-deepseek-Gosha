@@ -28,6 +28,7 @@
     },
     "scripts": {
         "start": "tsx ./index.ts",
-        "lint": "eslint ."
+        "lint": "eslint .",
+        "test": "node --import tsx --test queue.test.ts"
     }
 }

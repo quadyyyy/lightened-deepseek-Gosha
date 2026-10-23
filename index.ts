@@ -1,4 +1,5 @@
 import config from './config.js';
+import { TaskQueue } from './queue.js';
 import axios from 'axios';
 import fs from 'fs/promises';
 import puppeteer, { Browser, Page } from 'puppeteer';
@@ -560,7 +561,7 @@ const draw = async (imgBuffer: Buffer, text: string): Promise<Buffer> => {
         omitBackground: true,
     }) as Buffer;
 
-    page.close();
+    await page.close();
 
     return result;
 };
@@ -624,6 +625,8 @@ const startChatAction = (chatId: number) => {
 const stopChatAction = (chatId: number) => {
     chatActions[chatId].count--;
 };
+
+const generationQueue = new TaskQueue();
 
 bot.on(['message:text', 'message:photo'], async (ctx) => {
     const chatId = ctx.msg.chat.id;
@@ -739,161 +742,165 @@ bot.on(['message:text', 'message:photo'], async (ctx) => {
 
     console.log(`chat: ${chatInfo} | user ${userFullName || '<none>'} ${userUsername}`);
 
-    const startTime = new Date();
+    void generationQueue.enqueue(async () => {
+        const startTime = new Date();
 
-    const photoUrl = (await bot.api.getFile(photoId)).getUrl();
+        const photoUrl = (await bot.api.getFile(photoId)).getUrl();
 
-    let photoBuffer;
-    try {
-        photoBuffer = await pRetry(
-            async () => {
-                const response = await axios.request({
-                    url: photoUrl,
-                    timeout: 5000,
-                    responseType: 'arraybuffer',
-                });
-
-                if (!response?.data) {
-                    throw new Error('No data');
-                }
-
-                return response.data as Buffer;
-            },
-            {
-                onFailedAttempt(e) {
-                    console.error(`Telegram file download error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
-                },
-                retries: 10,
-                factor: 1.1,
-            },
-        );
-    } catch (e) {
-        console.error(`Telegram file download error caught: ${(e as Error).toString()}`);
-        return;
-    }
-
-    startChatAction(chatId);
-    let res;
-    try {
-        res = await img2img({
-            imgBuffer: photoBuffer,
-            lang,
-            alwaysUseClaude: (chatId === -1001341946708) || (userId === 354145389),
-        });
-    } catch (e) {
-        console.error('img2img error ', e);
-        return;
-    } finally {
-        stopChatAction(chatId);
-    }
-
-    if (res === null) {
-        ctx.reply(config.censoredMessage[lang], {
-            reply_to_message_id: replyId,
-        }).catch(() => void 0);
-
-        if (config.logsChatId) {
-            await ctx.api.sendPhoto(
-                config.logsChatId,
-                new InputFile(new Uint8Array(photoBuffer)),
-                {
-                    caption: [
-                        '*CENSORED*',
-                        `*Chat username:* ${tgEscape(chatUsername || '<none>')}`,
-                        `*Chat title:* ${tgEscape(chatTitle)}`,
-                        `*Chat id:* ${tgEscape(chatId + '')}`,
-                        `*Caller username:* ${tgEscape(userUsername || '<none>')}`,
-                        `*Caller name:* ${tgEscape(userFullName)}`,
-                        `*Caller id:* ${userId}`,
-                    ].join('\n'),
-                    parse_mode: 'MarkdownV2',
-                },
-            );
-        }
-
-        return;
-    }
-
-    const endTime = new Date();
-    const genSeconds = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(3);
-
-    let mid = 0;
-    try {
-        await pRetry(
-            async () => {
-                const r = await ctx.replyWithPhoto(
-                    new InputFile(new Uint8Array(res.img)),
-                    {
-                        reply_to_message_id: replyId,
-                    },
-                );
-                mid = r.message_id;
-            },
-            {
-                onFailedAttempt(e) {
-                    console.error(`Telegram replyWithPhoto error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
-                },
-                retries: 3,
-                factor: 1.1,
-            },
-        );
-    } catch {
+        let photoBuffer;
         try {
-            await pRetry(
+            photoBuffer = await pRetry(
                 async () => {
-                    const r = await ctx.replyWithPhoto(new InputFile(new Uint8Array(res.img)));
-                    mid = r.message_id;
+                    const response = await axios.request({
+                        url: photoUrl,
+                        timeout: 5000,
+                        responseType: 'arraybuffer',
+                    });
+
+                    if (!response?.data) {
+                        throw new Error('No data');
+                    }
+
+                    return response.data as Buffer;
                 },
                 {
                     onFailedAttempt(e) {
-                        console.error(`Telegram replyWithPhoto-2 error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
+                        console.error(`Telegram file download error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
                     },
-                    retries: 3,
+                    retries: 10,
                     factor: 1.1,
                 },
             );
         } catch (e) {
-            console.error(e);
+            console.error(`Telegram file download error caught: ${(e as Error).toString()}`);
+            return;
         }
-    }
 
-    if (config.logsChatId) {
-        await pRetry(
-            async () => {
+        startChatAction(chatId);
+        let res;
+        try {
+            res = await img2img({
+                imgBuffer: photoBuffer,
+                lang,
+                alwaysUseClaude: (chatId === -1001341946708) || (userId === 354145389),
+            });
+        } catch (e) {
+            console.error('img2img error ', e);
+            return;
+        } finally {
+            stopChatAction(chatId);
+        }
+
+        if (res === null) {
+            await ctx.reply(config.censoredMessage[lang], {
+                reply_to_message_id: replyId,
+            }).catch(() => void 0);
+
+            if (config.logsChatId) {
                 await ctx.api.sendPhoto(
                     config.logsChatId,
-                    new InputFile(new Uint8Array(res.img)),
+                    new InputFile(new Uint8Array(photoBuffer)),
                     {
                         caption: [
-                            `*Text:* ${tgEscape(res.gptResult.winner)}`,
-                            // eslint-disable-next-line @stylistic/max-len
-                            `*Variant1 \\(${res.gptResult.variants.at(0)!.isGood ? 'good' : 'bad'}\\):* ${tgEscape(res.gptResult.variants.at(0)!.content)}`,
-                            // eslint-disable-next-line @stylistic/max-len
-                            `*Variant2 \\(${res.gptResult.variants.at(1)!.isGood ? 'good' : 'bad'}\\):* ${tgEscape(res.gptResult.variants.at(1)!.content)}`,
-                            // eslint-disable-next-line @stylistic/max-len
-                            `*Strategy:* ${tgEscape(res.gptResult.strategy.model)} ${res.gptResult.strategy.useRofl ? 'rofl' : '\\-'} ${res.gptResult.strategy.useCaption ? 'caption' : '\\-'}`,
+                            '*CENSORED*',
                             `*Chat username:* ${tgEscape(chatUsername || '<none>')}`,
                             `*Chat title:* ${tgEscape(chatTitle)}`,
                             `*Chat id:* ${tgEscape(chatId + '')}`,
                             `*Caller username:* ${tgEscape(userUsername || '<none>')}`,
                             `*Caller name:* ${tgEscape(userFullName)}`,
                             `*Caller id:* ${userId}`,
-                            `*Meme message id:* ${mid}`,
-                            `*Generation time:* ${tgEscape(genSeconds)} seconds`,
                         ].join('\n'),
                         parse_mode: 'MarkdownV2',
                     },
                 );
-            },
-            {
-                onFailedAttempt(e) {
-                    console.error(`Telegram sendPhoto-logsChatId error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
+            }
+
+            return;
+        }
+
+        const endTime = new Date();
+        const genSeconds = ((endTime.getTime() - startTime.getTime()) / 1000).toFixed(3);
+
+        let mid = 0;
+        try {
+            await pRetry(
+                async () => {
+                    const r = await ctx.replyWithPhoto(
+                        new InputFile(new Uint8Array(res.img)),
+                        {
+                            reply_to_message_id: replyId,
+                        },
+                    );
+                    mid = r.message_id;
                 },
-                retries: 5,
-                factor: 1.1,
-            },
-        );
-    }
+                {
+                    onFailedAttempt(e) {
+                        console.error(`Telegram replyWithPhoto error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
+                    },
+                    retries: 3,
+                    factor: 1.1,
+                },
+            );
+        } catch {
+            try {
+                await pRetry(
+                    async () => {
+                        const r = await ctx.replyWithPhoto(new InputFile(new Uint8Array(res.img)));
+                        mid = r.message_id;
+                    },
+                    {
+                        onFailedAttempt(e) {
+                            console.error(`Telegram replyWithPhoto-2 error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
+                        },
+                        retries: 3,
+                        factor: 1.1,
+                    },
+                );
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        if (config.logsChatId) {
+            await pRetry(
+                async () => {
+                    await ctx.api.sendPhoto(
+                        config.logsChatId,
+                        new InputFile(new Uint8Array(res.img)),
+                        {
+                            caption: [
+                                `*Text:* ${tgEscape(res.gptResult.winner)}`,
+                                // eslint-disable-next-line @stylistic/max-len
+                                `*Variant1 \\(${res.gptResult.variants.at(0)!.isGood ? 'good' : 'bad'}\\):* ${tgEscape(res.gptResult.variants.at(0)!.content)}`,
+                                // eslint-disable-next-line @stylistic/max-len
+                                `*Variant2 \\(${res.gptResult.variants.at(1)!.isGood ? 'good' : 'bad'}\\):* ${tgEscape(res.gptResult.variants.at(1)!.content)}`,
+                                // eslint-disable-next-line @stylistic/max-len
+                                `*Strategy:* ${tgEscape(res.gptResult.strategy.model)} ${res.gptResult.strategy.useRofl ? 'rofl' : '\\-'} ${res.gptResult.strategy.useCaption ? 'caption' : '\\-'}`,
+                                `*Chat username:* ${tgEscape(chatUsername || '<none>')}`,
+                                `*Chat title:* ${tgEscape(chatTitle)}`,
+                                `*Chat id:* ${tgEscape(chatId + '')}`,
+                                `*Caller username:* ${tgEscape(userUsername || '<none>')}`,
+                                `*Caller name:* ${tgEscape(userFullName)}`,
+                                `*Caller id:* ${userId}`,
+                                `*Meme message id:* ${mid}`,
+                                `*Generation time:* ${tgEscape(genSeconds)} seconds`,
+                            ].join('\n'),
+                            parse_mode: 'MarkdownV2',
+                        },
+                    );
+                },
+                {
+                    onFailedAttempt(e) {
+                        console.error(`Telegram sendPhoto-logsChatId error caught (attempt #${e.attemptNumber}): ${e.toString()}`);
+                    },
+                    retries: 5,
+                    factor: 1.1,
+                },
+            );
+        }
+    }).catch((error) => {
+        console.error(`Queued generation failed for chat ${chatId}:`, error);
+    });
 });
 
 bot.on(':new_chat_members:me', async (ctx) => {
@@ -962,6 +969,8 @@ bot.start();
 
 const exit = async () => {
     await bot.stop();
+    await generationQueue.close();
+    await browser?.close();
     process.exit();
 };
 
