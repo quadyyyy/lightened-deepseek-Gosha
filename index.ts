@@ -1,4 +1,6 @@
 import config from './config.js';
+import { BanList } from './banlist.js';
+import { registerAdmin } from './admin.js';
 import { TaskQueue } from './queue.js';
 import axios from 'axios';
 import fs from 'fs/promises';
@@ -632,6 +634,8 @@ const stopChatAction = (chatId: number) => {
 };
 
 const generationQueue = new TaskQueue();
+const banList = await BanList.load('./banlist.json', config.banList);
+registerAdmin(bot, banList, config.adminId);
 
 bot.on(['message:text', 'message:photo'], async (ctx) => {
     const chatId = ctx.msg.chat.id;
@@ -641,7 +645,7 @@ bot.on(['message:text', 'message:photo'], async (ctx) => {
     const chatInfo = `id: ${chatId} title: ${chatTitle || '<none>'} username: ${chatUsername || '<none>'}`;
     const userId = ctx.msg.from.id;
 
-    if (config.banList.includes(chatId) || config.banList.includes(userId)) {
+    if (banList.has(chatId) || banList.has(userId)) {
         return;
     }
 
@@ -748,6 +752,9 @@ bot.on(['message:text', 'message:photo'], async (ctx) => {
     console.log(`chat: ${chatInfo} | user ${userFullName || '<none>'} ${userUsername}`);
 
     void generationQueue.enqueue(async () => {
+        if (banList.has(chatId) || banList.has(userId)) {
+            return;
+        }
         const startTime = new Date();
 
         const photoUrl = (await bot.api.getFile(photoId)).getUrl();

@@ -1,11 +1,12 @@
 /* eslint-disable @stylistic/max-len */
 
 const config: Config = {
-    deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
+    deepseekApiKey: '',
     deepseekModel: 'deepseek-flash',
     botToken: '',
     botUsername: '', // goshamemebot
     banList: [], // id[]
+    adminId: null, // Telegram user ID for private /admin access; null disables admin commands
     prompt: `
         Current date: {{DATE}}
 

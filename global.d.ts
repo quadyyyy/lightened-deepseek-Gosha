@@ -24,6 +24,7 @@ declare global {
         botToken: string;
         botUsername: string;
         banList: number[];
+        adminId: number | null;
         prompt: string;
         captionPrompt: string;
         mentions: Record<Lang, Array<string>>;

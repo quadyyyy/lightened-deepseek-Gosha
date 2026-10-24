@@ -30,13 +30,14 @@ pnpm install
 Then configure the required values in `config.ts`:
 
 ```ts
-deepseekApiKey: process.env.DEEPSEEK_API_KEY ?? '',
+deepseekApiKey: '', // your DeepSeek API key
 deepseekModel: 'deepseek-flash',
 botToken: 'your-telegram-bot-token',
 botUsername: 'your-bot-username',
+adminId: null, // your numeric Telegram user ID; null disables admin commands
 ```
 
-Set `DEEPSEEK_API_KEY` in the environment before starting the bot (or fill in `deepseekApiKey` locally). An OpenAI API key cannot be used with DeepSeek.
+Fill in `deepseekApiKey` in `config.ts` before starting the bot. An OpenAI API key cannot be used with DeepSeek.
 
 Both image descriptions and caption generation use `deepseek-flash` at `https://api.deepseek.com`. Thinking is disabled with `reasoning_effort: 'none'` for short responses and temperature control; description and caption temperatures remain 0.1 and 0.7 respectively. Existing cached descriptions are reused.
 
@@ -65,3 +66,14 @@ pnpm start
 - `queue.ts` serializes download, generation, rendering, and delivery without blocking incoming Telegram updates. Failed jobs do not stop the queue.
 - The queue is held in memory: graceful shutdown drains accepted jobs, but a crash or forced termination loses pending jobs. Run a single bot process to keep one global queue.
 - `ecosystem.config.cjs` is included for PM2-based process management
+
+## Ban list administration
+
+Only the Telegram user specified by `adminId` in `config.ts` can use `/admin`, and only in a private chat with the bot. It is disabled while `adminId` is `null`.
+
+- `/admin` — show help
+- `/admin ban <ID>` — block a user or chat
+- `/admin unban <ID>` — unblock a user or chat
+- `/admin list` — show blocked IDs
+
+Changes are saved to `banlist.json` and survive restarts. When this file does not exist, `config.banList` supplies the initial list; once saved, the file is authoritative. Keep it on persistent storage. Requests still waiting in the queue are checked again before processing; an already running job is not cancelled.

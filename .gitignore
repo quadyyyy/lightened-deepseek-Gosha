@@ -2,3 +2,6 @@
 /.vscode
 /captions/*
 !/captions/.gitkeep
+
+/banlist.json
+/banlist.json.tmp
