@@ -77,3 +77,38 @@ Only the Telegram user specified by `adminId` in `config.ts` can use `/admin`, a
 - `/admin list` — show blocked IDs
 
 Changes are saved to `banlist.json` and survive restarts. When this file does not exist, `config.banList` supplies the initial list; once saved, the file is authoritative. Keep it on persistent storage. Requests still waiting in the queue are checked again before processing; an already running job is not cancelled.
+
+## Video and GIF reactions (Gemini)
+
+`video-reactions.ts` handles full video uploads directly through Google's Files API and
+`generateContent`, using the existing Axios dependency. It does not extract still frames.
+The separate `VIDEO_PROMPT` controls Gosha's short text reaction; override it with
+`geminiVideo.prompt` in `config.ts` if desired. Image generation still uses DeepSeek.
+
+Install `ffmpeg` (including `ffprobe`) on the bot host, then configure:
+
+```bash
+export GEMINI_API_KEY='your-google-ai-studio-key'
+export GEMINI_VIDEO_MODEL='gemini-2.5-flash-lite'
+pnpm start
+```
+
+The default is `gemini-2.5-flash-lite`, a low-cost model with video/audio input.
+Google limits 2.5 access to existing users; if unavailable for your key, set
+`GEMINI_VIDEO_MODEL=gemini-3.5-flash-lite`. The environment variable overrides the default.
+The same settings can be set in `config.ts` under `geminiVideo`. Without a key the bot
+replies that video reactions are not configured and does not download or upload media.
+A live Gemini request has not yet been verified with an API key.
+
+In groups, mention `@your_bot_username` in a video's caption, or reply to a video/GIF
+with a configured trigger such as `гоша`. In private chats, send the media directly.
+The response is plain text replying to the original media, including in forum topics.
+Telegram videos, animations (usually MP4), and GIF documents are supported.
+Limits: 5 minutes and 20 MiB, including a check of actual file duration using ffprobe.
+FFmpeg converts the complete clip to MP4 with audio retained when present; GIF animation
+is preserved. Conversion is bounded to 3 minutes and a single encoder thread.
+Requests share the existing FIFO queue, user limits and ban list. Temporary local files
+are removed; uploaded Google files are deleted after success or failure when their ID is known.
+
+References: [Gemini Files API](https://ai.google.dev/gemini-api/docs/files) and
+[generateContent](https://ai.google.dev/api/generate-content).

@@ -18,6 +18,7 @@ declare global {
     };
 
     type Config = {
+        geminiVideo: import('./video-reactions.js').VideoSettings;
         deepseekApiKey: string;
         deepseekModel: DeepSeekModel;
         proxyUrl?: string;

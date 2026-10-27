@@ -1,6 +1,10 @@
 /* eslint-disable @stylistic/max-len */
 
 const config: Config = {
+    geminiVideo: {
+        apiKey: process.env.GEMINI_API_KEY ?? '',
+        model: process.env.GEMINI_VIDEO_MODEL ?? 'gemini-2.5-flash-lite',
+    },
     deepseekApiKey: '',
     deepseekModel: 'deepseek-flash',
     botToken: '',

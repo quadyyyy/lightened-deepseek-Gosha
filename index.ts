@@ -2,6 +2,7 @@ import config from './config.js';
 import { BanList } from './banlist.js';
 import { registerAdmin } from './admin.js';
 import { TaskQueue } from './queue.js';
+import { registerVideoReactions } from './video-reactions.js';
 import axios from 'axios';
 import fs from 'fs/promises';
 import puppeteer, { Browser, Page } from 'puppeteer';
@@ -636,6 +637,23 @@ const stopChatAction = (chatId: number) => {
 const generationQueue = new TaskQueue();
 const banList = await BanList.load('./banlist.json', config.banList);
 registerAdmin(bot, banList, config.adminId);
+registerVideoReactions(bot, {
+    settings: config.geminiVideo,
+    queue: generationQueue,
+    botUsername: config.botUsername,
+    mentions: config.mentions,
+    isBanned: id => banList.has(id),
+    takeSlot: (id) => {
+        if (config.adminIds.includes(id)) {
+            return true;
+        }
+        if (!checkCooldown(id, 'USER')) {
+            return false;
+        }
+        hitCooldown(id, 'USER');
+        return true;
+    },
+});
 
 bot.on(['message:text', 'message:photo'], async (ctx) => {
     const chatId = ctx.msg.chat.id;
